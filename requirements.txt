@@ -1,2 +1,1 @@
-Django>=4.2,<5.1
-wagtail>=6.1,<7
+wagtail>=7,<7.3
