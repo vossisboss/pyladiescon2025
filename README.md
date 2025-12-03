@@ -1,91 +1,223 @@
-# Step One: Set up Wagtail
+# Step Three: Creating a basic blog
 
-## Create a virtual environment
-
-### _Gitpod_
-
-If you don't have Python already installed on your machine or if you would prefer not to troubleshoot environment issues, then you can complete this workshop in Gitpod. You will have to be more careful about saving your work since Gitpod environments deactivate after a period of inactivity.
-
-Click the button below to launch Gitpod.
-
-**NOTE**: A GitHub account is required to use Gitpod
-
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/vossisboss/pvdjango-gitpod)
-
-### _Local virtual environment_
-
-If you already have Python installed on your machine, you can create a local virtual environment using `venv`. Open your command line and navigate to the directory you want to build your project in. Then enter the following commands to creative a virtual environment.
-
-```shell
-python -m venv env
-source env/bin/activate
-```
-
-If it activates successfully, there will be no output, but you should see an `(env)` indicator appear in your prompt.
-
-## Set up Wagtail
-
-Once you have a virtual environment set up, we can install Wagtail and start setting up our very first Wagtail website. In your project directory, enter the following command in your command line:
-
-```shell
-pip install wagtail
-```
-
-This command tells the Python package manager pip to install the latest release of Wagtail along with all of the dependencies that are needed for Wagtail. After Wagtail is installed, you can confirm that it is installed with:
-
-```shell
-pip show wagtail
-```
-
-After Wagtail is installed, you can use one of Wagtail's built-in commands to start a brand new website. For this tutorial, we're going to be creating a mini-blog project called `myblog`. We're also going to use a `--template` flag to import a template so that we will have a few things set up ahead of time. That way we won't spend this whole workshop copying and pasting template code.
-
-```shell
-wagtail start myblog --template=https://github.com/vossisboss/pycon2024-starter-template/archive/main.zip
-```
-
-Change directory into the new Django project's folder before continuing:
-
-```shell
-cd myblog
-```
-
-Once all of the files are set up, you'll need to enter some commands to set up the test database and all of the migration files that Wagtail needs. You can do that with the `migrate` command.
-
-```shell
-python manage.py migrate
-```
-
-After the migrations are complete, you'll need to create a superuser so that you can access the backend of your Wagtail website. Use the following command:
-
-```shell
-python manage.py createsuperuser
-```
-
-Follow the prompts in your command line to create your superuser. Once you have a superuser set up, you can start up the test server to see your new Wagtail site in action.
-
-```shell
-python manage.py runserver
-```
-
-If the server has started up without any errors, you can navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000) in your web browser to see your Wagtail website. If you've successfully installed Wagtail, you should see a home page with a large teal egg on it.
-
-To test that your superuser works, navigate to [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin) and login with the credentials you created.
-
-Now you have a basic Wagtail website set up. Next, we're going to extend the homepage model so that we can start adding content to the website.
-
-<br />
+:warning: **Do not change any of the identifiers** (model or field names) in the given code snippets, or the data import script we offer to speed up the process of creating your demo blog pages will not work.
 
 * * *
 
-## :memo: A quick note for Gitpod users :memo:
+Now that you've extended the Home page and added some custom models that we'll need, we're going to work on building out a blog. We provided a foundation in the project template to save some time, so let's head over to the `blog` directory and have a look at what's inside it.
 
-To log into the Wagtail backend, you're going to have to add a line of code to your `dev.py` file in settings. Navigate to `myblog/settings/dev.py` and add the following line of code to your file:
+
+* * *
+
+## :memo: A quick note on project structure :memo:
+
+In Wagtail projects, it is generally a good idea to keep related models in separate apps because it makes it a little easier for you to manage changes that affect migrations. Also, it makes it a little easier to decide where to put new code or models. Some Wagtail developers like to use a "core" or "base" app for models that are used across their projects. Others prefer not to use that approach because it can make future migrations a little trickier to manage. Both approaches are valid! For this workshop though, we're using the separate app approach.
+
+* * *
+
+## Our blog page models
+
+Navigate to `blog/models.py`. You'll find models for two new page types for your blog. Wagtail is a CMS that uses a tree structure to organize content. There are parent pages and child pages. The ultimate parent page by default is the Home page. All other page types branch off of the Home page. Then child pages can branch off of those pages too.
+
+The first page type you'll see is a parent type for the blog called `BlogIndexPage`. You don't have to use `Index` or `Page` in the name, but most Wagtail developers use those conventions because they help keep things organized. Here's what the code for `BlogIndexPage` looks like:
 
 ```python
-CSRF_TRUSTED_ORIGINS = ['https://*.gitpod.io']
+class BlogIndexPage(Page):
+    intro = RichTextField(blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel('intro')
+    ]
+
+    subpage_types = ['blog.BlogPage']
 ```
-<br />
+
+This is a very simple version of `BlogIndexPage`. You'll be adding a few more things to it later, but this will work right now for getting your blog set up. We also added a setting called `subpage_types` that will link `BlogIndexPage` to a specific child page type. It's unlikely that blog editors will be creating any other page types connected to `BlogIndexPage`, so adding this setting improves their user experience by reducing the number of clicks they have to make to set up a page.
+
+The second page type in the file is called `BlogPage`. The code looks like this:
+
+```python
+class BlogPage(Page):
+    date = models.DateField("Post date")
+    intro = models.CharField(max_length=250)
+    body = RichTextField(blank=True)
+
+    search_fields = Page.search_fields + [
+        index.SearchField('intro'),
+        index.SearchField('body'),
+    ]
+
+    content_panels = Page.content_panels + [
+        FieldPanel('date'),
+        FieldPanel('intro'),
+        FieldPanel('body'),
+    ]
+
+    parent_page_types = ['blog.BlogIndexPage']
+```
+
+Think about the fields you typically need for a reader to enjoy a blog post. The title is included in a Wagtail model by default, so what else is usually needed? Blogs can get pretty messy without dates to organize them, so we added a `date` field. We also added an `intro` field to help readers get a preview of what the blog post is about. Note that the `intro` field has a `max_length` setting to keep editors from being too longwinded. A `body` field is pretty key for a blog, too, because otherwise there isn't a place to put any of your content. We're also added the `parent_page_types` setting to link `BlogPage` to `BlogIndexPage`.
+
+
+## Making fields searchable
+
+You're probably wondering what this chunk of code in `BlogPage` does:
+
+```python
+    search_fields = Page.search_fields + [
+        index.SearchField('intro'),
+        index.SearchField('body'),
+    ]
+```
+
+This code is telling Wagtail which fields you would like to be searchable. For the most part, you want users to be able to search as many fields as possible to help them find what they need. But there are some occasions where you don't want content to be indexed in the website search.
+
+
+## Templates for your blog
+
+You're probably noticing a trend how things are set up in Wagtail. You create models to organize your data then pair them with a set of templates that determined how that data is displayed in HTML on your webpage. We pre-loaded two basic templates for `BlogIndexPage` and `BlogPage`. You can have a look at those in the `myblog/templates/blog` folder. Remember where they are because we will be coming back to them to modify the templates and make them better for accesssibility.
+
+
+## Adding Wagtail StreamField
+
+One of the best parts of Wagtail is [StreamField](https://docs.wagtail.org/en/stable/topics/streamfield.html). StreamField gives users the power to mix and match different "blocks" of content rather than having a strict structure for a page. For example, someone writing a blog post could add a "quote" block to highlight a particular quote or phrase from their post. Or they could add a "sidebar" block that includes a little extra bonus content on the page. There aren't many limits to the types of blocks you can create.
+
+To show you StreamField in action, you're going to create a simple StreamField implementation in the blog post `body` using some of the [default blocks](https://docs.wagtail.org/en/stable/reference/streamfield/blocks.html) that come with Wagtail. First, update your import statements in your `models.py` file so they look like this:
+
+```python
+from django.db import models
+
+from wagtail.models import Page
+from wagtail.fields import RichTextField, StreamField
+from wagtail.admin.panels import FieldPanel
+from wagtail.search import index
+from wagtail.embeds.blocks import EmbedBlock
+from wagtail import blocks
+from wagtail.images.blocks import ImageChooserBlock
+```
+
+Then, at the top of the file under the imports, add this one custom block that we'll start with:
+
+```python
+class HeadingBlock(blocks.StructBlock):
+    size = blocks.ChoiceBlock(
+        choices=[
+            ("h2", "H2"),
+            ("h3", "H3"),
+            ("h4", "H4"),
+        ],
+    )
+    text = blocks.CharBlock()
+
+    class Meta:
+        icon = "title"
+        template = "blocks/heading_block.html"
+```
+
+Note that this block has its own template defined that tell's Wagtail how to render it. Create a file at `myblog/templates/blocks/heading_block.html` and add this one line to it:
+
+```django
+<{{ self.size }}>{{ self.text }}</{{ self.size }}>
+```
+
+Next, update the `body` field definition in your `BlogPage` class, replacing `RichTextField` with a `StreamField` with four block types:
+
+```python
+    body = StreamField(
+        [
+            ("heading", HeadingBlock()),
+            ("paragraph", blocks.RichTextBlock()),
+            ("image", ImageChooserBlock()),
+            ("embed", EmbedBlock(max_width=800, max_height=400)),
+        ]
+    )
+```
+
+Your whole file should now look like this:
+
+```python
+from django.db import models
+
+from wagtail.models import Page
+from wagtail.fields import RichTextField, StreamField
+from wagtail.admin.panels import FieldPanel
+from wagtail.search import index
+from wagtail.embeds.blocks import EmbedBlock
+from wagtail import blocks
+from wagtail.images.blocks import ImageChooserBlock
+
+
+class HeadingBlock(blocks.StructBlock):
+    size = blocks.ChoiceBlock(
+        choices=[
+            ("h2", "H2"),
+            ("h3", "H3"),
+            ("h4", "H4"),
+        ],
+    )
+    text = blocks.CharBlock()
+
+    class Meta:
+        icon = "title"
+        template = "blocks/heading_block.html"
+
+
+class BlogIndexPage(Page):
+    intro = RichTextField(blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel('intro')
+    ]
+
+    subpage_types = ['blog.BlogPage']
+
+
+class BlogPage(Page):
+    date = models.DateField("Post date")
+    intro = models.CharField(max_length=250)
+    body = StreamField(
+        [
+            ("heading", HeadingBlock()),
+            ("paragraph", blocks.RichTextBlock()),
+            ("image", ImageChooserBlock()),
+            ("embed", EmbedBlock(max_width=800, max_height=400)),
+        ]
+    )
+
+    search_fields = Page.search_fields + [
+        index.SearchField('intro'),
+        index.SearchField('body'),
+    ]
+
+    content_panels = Page.content_panels + [
+        FieldPanel('date'),
+        FieldPanel('intro'),
+        FieldPanel('body'),
+    ]
+
+    parent_page_types = ['blog.BlogIndexPage']
+```
+
+Save your file and then run the migration commands `python manage.py makemigrations` and `python manage.py migrate`.
+
+
+## Load some demo pages
+
+Rather than creating your own blog index and blog pages, we provided a script to load some practice content into your database. Running our script will also give you an example accessibility issue that we'll look at later in this workshop.
+
+Run `python manage.py seed_data` in your terminal to load up our demo `BlogIndexPage` with a child `BlogPage`.
+
+If it's not still running, start up the development server real quick with `python manage.py runserver`, then visit the admin (http://127.0.0.1:8000/admin/) have a look at the Demo Blog Index and "Hello, world!" pages that the seed script created.
+
+You'll notice that the "body" section in the blog page has several blocks with green plus icons between them. When you click one of those, a collection of blocks will appear for you to choose from. Feel free to create a new blog page under the Demo Blog Index and experiment with combining blocks, but leave the ones on "Hello, world!" alone so that we can use them for demonstrating accessibility fixes later.
+
+![Our 'Hello, world!' blog page's body StreamField interface](tutorial-screenshots/hello-world-streamfield.png)
+
+You can also click the **Live** button at the top right of our demo pages to take a peek at how they are rendered on our front end.
+
+We're now done with the basic Wagtail set up and ready to move on to making our simple blog more accessible than it currently is!
+
 
 * * *
 
-[Continue to step 2](https://github.com/vossisboss/pyconwagtail2024/tree/step-2)
+[Continue to step 4](https://github.com/vossisboss/pyladiescon2025/tree/step-4)
