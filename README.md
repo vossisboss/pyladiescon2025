@@ -1,223 +1,186 @@
-# Step Three: Creating a basic blog
+# Step Four: Using Custom Validation to Enforce Good Accessibility Practices
 
-:warning: **Do not change any of the identifiers** (model or field names) in the given code snippets, or the data import script we offer to speed up the process of creating your demo blog pages will not work.
+Let's take a look at one of the most common accessibility errors out there, but an easy one to address: **incorrect heading hierarchy**.
 
-* * *
+Taking a look at the example blog post that the management command created for you (http://127.0.0.1:8000/demo-blog-index/hello-world/), you should see we're getting an error for incorrect heading hierarchy, and it's pointing to the smaller heading in the middle of the body content. The issue here is that we have an H2 at the top of the content, but then we're skipping right to H4 on the lower heading, with no H3 between.
 
-Now that you've extended the Home page and added some custom models that we'll need, we're going to work on building out a blog. We provided a foundation in the project template to save some time, so let's head over to the `blog` directory and have a look at what's inside it.
+Screen readers and site crawlers rely on having a logical document structure to understand the content of your page, and headings are the primary way in which they interpret that structure. One way to think about this is like a big, multi-level, numbered outline in a Word document. If you indented two levels at once, that would look pretty strange and potentially confuse readers, wouldn't it? Similarly, webpage headings should avoid skipping levels, as they create the outline of the page.
 
+Hopefully, your editors will see this warning in the accessibility checker, but you can also do more to help them avoid this mistake, using custom validation to prevent saving the page if such an error exists.
 
-* * *
+If you look at this page in the editor, you can see that the heading in question is entered into a Heading Block in the body StreamField. Wagtail 5.0, released about a year ago, introduced some [new ways to validate StreamField blocks](https://docs.wagtail.org/en/stable/releases/5.0.html#custom-validation-support-for-streamfield) (hat tip to Wagtail core developer Matt Westcott), and using these it's pretty simple to validate whether or not the headings in a StreamField are in a proper order when an editor attempts to save a page.
 
-## :memo: A quick note on project structure :memo:
+## Set up StreamBlock
 
-In Wagtail projects, it is generally a good idea to keep related models in separate apps because it makes it a little easier for you to manage changes that affect migrations. Also, it makes it a little easier to decide where to put new code or models. Some Wagtail developers like to use a "core" or "base" app for models that are used across their projects. Others prefer not to use that approach because it can make future migrations a little trickier to manage. Both approaches are valid! For this workshop though, we're using the separate app approach.
+In order to take advantage of this new functionality, we'll have to slightly adjust the structure of how we defined our StreamField. Instead of listing the possible blocks directly within the `StreamField()` declaration, we'll instead create a [Stream_Block_](https://docs.wagtail.org/en/stable/topics/streamfield.html#streamblock) class that we can apply our custom validation to.
 
-* * *
+First, create a new `blocks.py` file with the `blog` folder so we don't start to overload the `models.py` file.
 
-## Our blog page models
-
-Navigate to `blog/models.py`. You'll find models for two new page types for your blog. Wagtail is a CMS that uses a tree structure to organize content. There are parent pages and child pages. The ultimate parent page by default is the Home page. All other page types branch off of the Home page. Then child pages can branch off of those pages too.
-
-The first page type you'll see is a parent type for the blog called `BlogIndexPage`. You don't have to use `Index` or `Page` in the name, but most Wagtail developers use those conventions because they help keep things organized. Here's what the code for `BlogIndexPage` looks like:
+Copy and paste these imports at the top of `blog/blocks.py`:
 
 ```python
-class BlogIndexPage(Page):
-    intro = RichTextField(blank=True)
+from django.core.exceptions import ValidationError
 
-    content_panels = Page.content_panels + [
-        FieldPanel('intro')
-    ]
-
-    subpage_types = ['blog.BlogPage']
-```
-
-This is a very simple version of `BlogIndexPage`. You'll be adding a few more things to it later, but this will work right now for getting your blog set up. We also added a setting called `subpage_types` that will link `BlogIndexPage` to a specific child page type. It's unlikely that blog editors will be creating any other page types connected to `BlogIndexPage`, so adding this setting improves their user experience by reducing the number of clicks they have to make to set up a page.
-
-The second page type in the file is called `BlogPage`. The code looks like this:
-
-```python
-class BlogPage(Page):
-    date = models.DateField("Post date")
-    intro = models.CharField(max_length=250)
-    body = RichTextField(blank=True)
-
-    search_fields = Page.search_fields + [
-        index.SearchField('intro'),
-        index.SearchField('body'),
-    ]
-
-    content_panels = Page.content_panels + [
-        FieldPanel('date'),
-        FieldPanel('intro'),
-        FieldPanel('body'),
-    ]
-
-    parent_page_types = ['blog.BlogIndexPage']
-```
-
-Think about the fields you typically need for a reader to enjoy a blog post. The title is included in a Wagtail model by default, so what else is usually needed? Blogs can get pretty messy without dates to organize them, so we added a `date` field. We also added an `intro` field to help readers get a preview of what the blog post is about. Note that the `intro` field has a `max_length` setting to keep editors from being too longwinded. A `body` field is pretty key for a blog, too, because otherwise there isn't a place to put any of your content. We're also added the `parent_page_types` setting to link `BlogPage` to `BlogIndexPage`.
-
-
-## Making fields searchable
-
-You're probably wondering what this chunk of code in `BlogPage` does:
-
-```python
-    search_fields = Page.search_fields + [
-        index.SearchField('intro'),
-        index.SearchField('body'),
-    ]
-```
-
-This code is telling Wagtail which fields you would like to be searchable. For the most part, you want users to be able to search as many fields as possible to help them find what they need. But there are some occasions where you don't want content to be indexed in the website search.
-
-
-## Templates for your blog
-
-You're probably noticing a trend how things are set up in Wagtail. You create models to organize your data then pair them with a set of templates that determined how that data is displayed in HTML on your webpage. We pre-loaded two basic templates for `BlogIndexPage` and `BlogPage`. You can have a look at those in the `myblog/templates/blog` folder. Remember where they are because we will be coming back to them to modify the templates and make them better for accesssibility.
-
-
-## Adding Wagtail StreamField
-
-One of the best parts of Wagtail is [StreamField](https://docs.wagtail.org/en/stable/topics/streamfield.html). StreamField gives users the power to mix and match different "blocks" of content rather than having a strict structure for a page. For example, someone writing a blog post could add a "quote" block to highlight a particular quote or phrase from their post. Or they could add a "sidebar" block that includes a little extra bonus content on the page. There aren't many limits to the types of blocks you can create.
-
-To show you StreamField in action, you're going to create a simple StreamField implementation in the blog post `body` using some of the [default blocks](https://docs.wagtail.org/en/stable/reference/streamfield/blocks.html) that come with Wagtail. First, update your import statements in your `models.py` file so they look like this:
-
-```python
-from django.db import models
-
-from wagtail.models import Page
-from wagtail.fields import RichTextField, StreamField
-from wagtail.admin.panels import FieldPanel
-from wagtail.search import index
+from wagtail.blocks import (
+    CharBlock,
+    ChoiceBlock,
+    RichTextBlock,
+    StreamBlock,
+    StreamBlockValidationError,
+    StructBlock,
+)
 from wagtail.embeds.blocks import EmbedBlock
-from wagtail import blocks
 from wagtail.images.blocks import ImageChooserBlock
 ```
 
-Then, at the top of the file under the imports, add this one custom block that we'll start with:
+Then cut the entire `HeadingBlock` class from `models.py` and paste it into `blocks.py`. Also remove the `blocks.` prefix that is used in three places in `HeadingBlock`, because we are now importing specific classes from the `blocks` module. The result should look like this:
 
 ```python
-class HeadingBlock(blocks.StructBlock):
-    size = blocks.ChoiceBlock(
+class HeadingBlock(StructBlock):
+    size = ChoiceBlock(
         choices=[
             ("h2", "H2"),
             ("h3", "H3"),
             ("h4", "H4"),
         ],
     )
-    text = blocks.CharBlock()
+    text = CharBlock()
 
     class Meta:
         icon = "title"
         template = "blocks/heading_block.html"
 ```
 
-Note that this block has its own template defined that tell's Wagtail how to render it. Create a file at `myblog/templates/blocks/heading_block.html` and add this one line to it:
-
-```django
-<{{ self.size }}>{{ self.text }}</{{ self.size }}>
-```
-
-Next, update the `body` field definition in your `BlogPage` class, replacing `RichTextField` with a `StreamField` with four block types:
+Now we'll set up our StreamBlock. It will have all the same features of the current blog page's `body` StreamField. Copy and paste this class into your `blocks.py` file, below the `HeadingBlock`:
 
 ```python
-    body = StreamField(
-        [
-            ("heading", HeadingBlock()),
-            ("paragraph", blocks.RichTextBlock()),
-            ("image", ImageChooserBlock()),
-            ("embed", EmbedBlock(max_width=800, max_height=400)),
-        ]
-    )
+class BaseStreamBlock(StreamBlock):
+    heading = HeadingBlock()
+    paragraph = RichTextBlock()
+    image = ImageChooserBlock()
+    embed = EmbedBlock(max_width=800, max_height=400)
 ```
 
-Your whole file should now look like this:
+Now, back in `models.py`, update the `body` StreamField in the `BlogPage` class to use it. Remove the list of four blocks and insert a call to the new `BaseStreamBlock`, like so:
 
 ```python
-from django.db import models
-
-from wagtail.models import Page
-from wagtail.fields import RichTextField, StreamField
-from wagtail.admin.panels import FieldPanel
-from wagtail.search import index
-from wagtail.embeds.blocks import EmbedBlock
-from wagtail import blocks
-from wagtail.images.blocks import ImageChooserBlock
-
-
-class HeadingBlock(blocks.StructBlock):
-    size = blocks.ChoiceBlock(
-        choices=[
-            ("h2", "H2"),
-            ("h3", "H3"),
-            ("h4", "H4"),
-        ],
-    )
-    text = blocks.CharBlock()
-
-    class Meta:
-        icon = "title"
-        template = "blocks/heading_block.html"
-
-
-class BlogIndexPage(Page):
-    intro = RichTextField(blank=True)
-
-    content_panels = Page.content_panels + [
-        FieldPanel('intro')
-    ]
-
-    subpage_types = ['blog.BlogPage']
-
-
 class BlogPage(Page):
     date = models.DateField("Post date")
     intro = models.CharField(max_length=250)
-    body = StreamField(
-        [
-            ("heading", HeadingBlock()),
-            ("paragraph", blocks.RichTextBlock()),
-            ("image", ImageChooserBlock()),
-            ("embed", EmbedBlock(max_width=800, max_height=400)),
-        ]
-    )
-
-    search_fields = Page.search_fields + [
-        index.SearchField('intro'),
-        index.SearchField('body'),
-    ]
-
-    content_panels = Page.content_panels + [
-        FieldPanel('date'),
-        FieldPanel('intro'),
-        FieldPanel('body'),
-    ]
-
-    parent_page_types = ['blog.BlogIndexPage']
+    body = StreamField(BaseStreamBlock())
 ```
 
-Save your file and then run the migration commands `python manage.py makemigrations` and `python manage.py migrate`.
+You will also need to add an import of BaseStreamBlock to the top of `models.py`:
+
+```python
+from blog.blocks import BaseStreamBlock
+```
+
+Save everything and reload your editor. The experience should be exactly the same as it was before. You can also confirm that Django thinks nothing has changed by doing a dry run of `makemigrations`:
+
+```shell
+python manage.py makemigrations --dry-run
+```
 
 
-## Load some demo pages
+## Override `clean()` to add custom validation logic
 
-Rather than creating your own blog index and blog pages, we provided a script to load some practice content into your database. Running our script will also give you an example accessibility issue that we'll look at later in this workshop.
+With that rearranging done, we can now add our custom validation to check heading hierarchy on save. In a pattern that may be familiar to you if you're experienced in Django, you can override the `StreamBlock` parent class's `clean()` method that is called when saving to try to validate the StreamBlock (actually, the entire StreamField in this case). Back in `blocks.py`, we'll be updating our `BaseStreamBlock` to add the custom `clean()` method:
 
-Run `python manage.py seed_data` in your terminal to load up our demo `BlogIndexPage` with a child `BlogPage`.
+```python
+class BaseStreamBlock(StreamBlock):
+    heading = HeadingBlock()
+    paragraph = RichTextBlock()
+    image = ImageBlock(help_text="Change the alt text to match the context of your blog")
+    embed = EmbedBlock(max_width=800, max_height=400)
 
-If it's not still running, start up the development server real quick with `python manage.py runserver`, then visit the admin (http://127.0.0.1:8000/admin/) have a look at the Demo Blog Index and "Hello, world!" pages that the seed script created.
+    def clean(self, value, ignore_required_constraints=False):
+        result = super().clean(value)
+        headings = [
+            # tuples of block index and heading level
+            (0, 1)  # mock H1 block at index 0
+        ]
+        errors = {}
 
-You'll notice that the "body" section in the blog page has several blocks with green plus icons between them. When you click one of those, a collection of blocks will appear for you to choose from. Feel free to create a new blog page under the Demo Blog Index and experiment with combining blocks, but leave the ones on "Hello, world!" alone so that we can use them for demonstrating accessibility fixes later.
+        # first iterate through all blocks in the StreamBlock
+        for i in range(0, len(result)):
+            # if a block is of type "heading"
+            if result[i].block_type == "heading":
+                # convert size string to integer
+                level = int(result[i].value.get("size")[-1:])
+                # append tuple of block index and heading level to list
+                headings.append((i, level))
 
-![Our 'Hello, world!' blog page's body StreamField interface](tutorial-screenshots/hello-world-streamfield.png)
+        # now iterate through list of headings,
+        # starting with second heading to skip over the mock H1 heading block
+        for i in range(1, len(headings)):
+            # compare its level to the previous heading's level
+            if int(headings[i][1]) - int(headings[i - 1][1]) > 1:
+                # if the difference is more than 1,
+                # add an error to the array with its original index
+                errors[headings[i][0]] = ValidationError(
+                    "Incorrect heading hierarchy. Avoid skipping levels."
+                )
 
-You can also click the **Live** button at the top right of our demo pages to take a peek at how they are rendered on our front end.
+        if errors:
+            raise StreamBlockValidationError(block_errors=errors)
 
-We're now done with the basic Wagtail set up and ready to move on to making our simple blog more accessible than it currently is!
+        return result
+```
+
+This `clean()` method loops through all of the child blocks in the StreamBlock we're saving, and if they're a heading block, stores their size in a list of headings (which I prepopulated with a placeholder for the H1 that isn't part of the StreamField). Then we can loop through that list of headings – starting at the _second_ heading in the list – and compare its size to the previous heading's size. If the difference is greater than 1, we have identified an error in the heading hierarchy, so we add that to an errors dictionary, and then raise a `StreamBlockValidationError` at the end if that dictionary isn't empty.
+
+Return to the editor after putting that in place and saving the file, and you'll see that if you try to save the "Hello, world!" blog page again, with its existing hierarchy issue, it will throw a validation error and prevent the save. Pretty cool! Swap the heading to an H2, and you'll see it save successfully. If you then add a new heading block at the bottom and set it to H4, skipping H3, you'll see that that will again throw a validation error.
+
+You may have noticed that the accessibility checker was also flagging a heading hierarchy issue on the heading within the rich text block toward the bottom of the page. Since our rich text block is set up with the default features, editors can also create headings in rich text, in addition to the heading block. We'll need to add a little additional code to our custom `clean()` to handle headings in rich text, as they are represented differently there.
+
+First add this new import of Python's standard regular expression library to the top of `blocks.py`:
+
+```python
+import re
+```
+
+Then add this condition below the original check to see if the block type was `heading` in the first loop through all the blocks:
+
+```python
+            elif result[i].block_type == "paragraph":
+                # look for headings within the RichTextBlock and add those to the list
+                for match in re.findall(r"\<h[2-6]", result[i].render()):
+                    level = int(match[-1:])
+                    headings.append((i, level))
+```
+
+Your whole first loop should now look like this:
+
+```python
+        # first iterate through all blocks in the StreamBlock
+        for i in range(0, len(result)):
+            # if a block is of type "heading"
+            if result[i].block_type == "heading":
+                # convert size string to integer
+                level = int(result[i].value.get("size")[-1:])
+                # append tuple of block index and heading level to list
+                headings.append((i, level))
+            elif result[i].block_type == "paragraph":
+                # look for headings within the RichTextBlock and add those to the list
+                for match in re.findall(r"\<h[2-6]", result[i].render()):
+                    level = int(match[-1:])
+                    headings.append((i, level))
+```
+
+Save the file, and if you try to save the page in the editor again, you'll now see an error being reported on the rich text block containing the H4. If a rich text block contains multiple headings, it won't be able to pinpoint an error on a specific heading, but clueing the editor into checking the whole block is still valuable.
 
 
-* * *
+## Further exploration
 
-[Continue to step 4](https://github.com/vossisboss/pyladiescon2025/tree/step-4)
+A couple of notes that we won't address in this tutorial, but would be good for you to know for the future:
+
+- Wagtail also has `RichTextField`, a standard Django model field that can be used to provide a rich text editor outside of a StreamField. In that situation, you could subclass `RichTextField` and add your own custom `clean()` method.
+- If you have a page that supports a combination of StreamField and `RichTextField`, or maybe even has other kinds of fields that result in headings on the rendered page, you can override the `clean()` method of the page model itself, looping through it all to build a complete list of headings on the page and then checking each of those in succession.
+
+
+---
+
+Our custom validation will help editors ensure they are using headings accessibly, but don't forget to make sure that any heading elements that are hardcoded into templates also follow a logical hierarchy!
+
+[Continue to Step 5](https://github.com/vossisboss/pyladiescon2025/tree/step-5)
