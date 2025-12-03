@@ -31,16 +31,6 @@ class BlogPage(Page):
     content_panels = Page.content_panels + [
         FieldPanel('date'),
         FieldPanel('intro'),
-        HelpPanel(
-            content=(
-                'Please ensure that you do not skip heading levels. '
-            'For example, the next heading after an H2 '
-            'should only be either an H3 or another H2. '
-            '<a href="https://www.a11yproject.com/posts/'
-            'how-to-accessible-heading-structure/" target="_blank">'
-            'Learn more about heading structure</a>'
-            )
-        ),
         FieldPanel('body'),
     ]
 
