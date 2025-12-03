@@ -31,7 +31,7 @@ class HeadingBlock(StructBlock):
 class BaseStreamBlock(StreamBlock):
     heading = HeadingBlock()
     paragraph = RichTextBlock()
-    image = ImageBlock(help_text="Change the alt text to match the context of your blog")
+    image = ImageBlock()
     embed = EmbedBlock(max_width=800, max_height=400)
 
     def clean(self, value, ignore_required_constraints=False):
