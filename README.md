@@ -1,73 +1,86 @@
-# Bonus Step Six: Using the Wagtail Accessibility Checker
+# Step Five: Helping Editors Help Themselves
 
-[Wagtail's built-in accessibility checker](https://guide.wagtail.org/en-latest/releases/new-in-wagtail-4-2/#built-in-accessibility-checker) (added in Wagtail 4.2 in January 2023) is the hallmark feature of our efforts to improve the accessibility of sites made with Wagtail. It's based on [the Axe engine from Deque Systems](https://www.deque.com/axe/). Axe is a tool that can run a wide range of automated accessibility tests. Aside from having [its own browser extension](https://www.deque.com/get-started-axe-devtools-browser-extension/), they have open-soured their framework for other tools to be able to use it under the hood. One example is [Google's Lighthouse](https://developer.chrome.com/docs/lighthouse/overview), and as noted, it also powers the Wagtail accessibility checker.
+One of the best ways you can support users is to give them prompt and guidance as they are using your software. Here are some examples of how you can use help text and panels to promote better accessibility practices.
 
-The goal of Wagtail's accessibility checker is to make it easy for content editors to identify accessibility issues that they can address themselves. To try it out, open the frontend of your site at http://127.0.0.1:8000 and look for the Wagtail user bar in the lower right corner. You might have spotted this in previous steps, but thanks to some intentional mistakes included in the template code we provided you, you should see a red badge on the Wagtail icon indicating one error on the page:
 
-![The Wagtail user bar button indicating one error](tutorial-screenshots/userbar-button-with-error.png)
+## `help_text`
 
-Open up the user bar and click on the **Accessibility** item to show what errors it found. For each error it located, you can click on the button showing the tag name with a crosshair icon to highlight that part of the page.
+In Wagtail and Django, help text is a way for developers to provide hints about a field to a user as they are editing it. You can add a `help_text` attribute to most fields to give your user extra instructions.
 
-![The accessibility checker open and higlighting an error in the footer](tutorial-screenshots/accessibility-checker-error-display.png)
+### Help text for prompting contextual alt text
 
-In this case, it's telling us that there is an empty heading, and it's pointing at the `<h2>` in the footer of the page, but that's actually not the _only_ error we introduced! Some of them aren't being displayed because, as mentioned previously, the accessibility checker is meant for editors to find things that they can correct in their content, so its default configuration leaves out many of the errors that Axe can display but that only a developer can address.
-
-As developers, we recommend that you enable the display of all possible errors when you are logged in as an admin-level user, so that you can be made aware of those errors that you should fix in your code. To do that, we'll use one of Wagtail's [hooks](https://docs.wagtail.org/en/stable/reference/hooks.html) to customize the behavior of the accessibility checker depending on user level.
-
-Copy this code and paste it into a new `wagtail_hooks.py` file in your `home` app folder:
+Help text can provide helpful reminders about alt text fields. While having some alt text, even imperfect alt text, is better than nothing, it's even better to make sure the alt text of the image matches the context of the content you are including the image in. So in our `blocks.py` file, let's update the `image` field to include some `help_text`.
 
 ```python
-from wagtail import hooks
-from wagtail.admin.userbar import AccessibilityItem
+class BaseStreamBlock(StreamBlock):
+    heading = HeadingBlock()
+    paragraph = RichTextBlock()
+    image = ImageBlock(help_text="Change the alt text to match the context of your blog")
+    embed = EmbedBlock(max_width=800, max_height=400)
+```
+After you save your changes and refresh the page, you should see that `help_text` included as a part of the `image` field. It's best to make `help_text`as brief and direct as possible, but you can also include links in your `help_text` with the `mark_safe` method. You can find a good example of that in the prior version of this tutorial in [Step Eight](https://github.com/vossisboss/pyconwagtail2024/tree/step-8).
 
 
-class CustomAccessibilityItem(AccessibilityItem):
-    def get_axe_run_only(self, request):
-        # Do not limit what rule sets run if the user is a superuser
-        if request.user.is_superuser:
-            return None
-        # Otherwise, use the default rule sets
-        return AccessibilityItem.axe_run_only
+## `HelpPanel`
+
+Sometimes you might find yourself in a situation where it'd be a better user experience to give guidance at a page level rather than on individual fields. For example, let's say you wanted to include a more general reminder about heading hierarchary on your blog pages.
+
+Wagtail has a `HelpPanel` that is perfect for this kind of situation. Rather than a typical editor panel that provides some sort of form widget for entering content, `HelpPanel` is a way to provide read-only help content to users.
+
+Here's an example of how to include a `HelpPanel` in one of the blog models. Update your `models.py` file in the `blog` application to match this code:
+
+```python
+from django.db import models
+
+from wagtail.models import Page
+from wagtail.fields import RichTextField, StreamField
+from wagtail.admin.panels import FieldPanel, HelpPanel
+from wagtail.search import index
+
+from blog.blocks import BaseStreamBlock
 
 
-@hooks.register("construct_wagtail_userbar")
-def replace_userbar_accessibility_item(request, items):
-    items[:] = [
-        CustomAccessibilityItem() if isinstance(item, AccessibilityItem) else item
-        for item in items
+class BlogIndexPage(Page):
+    intro = RichTextField(blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel('intro')
     ]
+
+    subpage_types = ['blog.BlogPage']
+
+
+class BlogPage(Page):
+    date = models.DateField("Post date")
+    intro = models.CharField(max_length=250)
+    body = StreamField(BaseStreamBlock())
+
+    search_fields = Page.search_fields + [
+        index.SearchField('intro'),
+        index.SearchField('body'),
+    ]
+
+    content_panels = Page.content_panels + [
+        FieldPanel('date'),
+        FieldPanel('intro'),
+        HelpPanel(
+            content=(
+                'Please ensure that you do not skip heading levels. '
+            'For example, the next heading after an H2 '
+            'should only be either an H3 or another H2. '
+            '<a href="https://www.a11yproject.com/posts/'
+            'how-to-accessible-heading-structure/" target="_blank">'
+            'Learn more about heading structure</a>'
+            )
+        ),
+        FieldPanel('body'),
+    ]
+
+    parent_page_types = ['blog.BlogIndexPage']
 ```
 
-Wagtail will automatically load any `wagtail_hooks.py` files that it finds within app folders, and when it loads this one, it will use the `construct_wagtail_userbar` hook to replace the stock `AccessibilityItem` with the `CustomAccessibilityItem` that we subclassed from it above.
-
-After saving the file, stop and restart your development server (Ctrl+C, then `python manage.py runserver`) in order to get Wagtail to pick up on the new hooks file. Then refresh your homepage and you will see a new error: "All page content should be contained by landmark". ([Landmarks](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Roles/landmark_role) are used by assistive technology to help users navigate between the major areas of a page.) This is an example of the kind of error that can't be addressed by an editor and must be addressed by a developer through changing the template code.
-
-We have two instances of this error to take care of: the header and the main content area. For the header, we could solve this by applying a `role="banner"` attribute to the wrapping `div`, but a better practice is to use newer HTML elements with semantic meanings and implicit landmark roles. Instead of adding `role` attribute, the Let's change the element that's wrapping our site header from a `div` to `header`.
-
-In `myblog/templates/base.html`, update the header area to look like this:
-
-```django
-        <header class="">
-            My Wagtail Blog
-        </header>
-```
-
-The main content area (`{% block content %}{% endblock %}`) is currently also wrapped in a `div`, so let's contain all of the rest of the page content by swapping that to a `main` element (again in `myblog/templates/base.html`):
-
-```django
-        <main id="main">
-            {% block content %}{% endblock %}
-        </main>
-```
-
-(The `id="main"` also provides a convenient hook for adding a [skip link](https://webaim.org/techniques/skipnav/), which we won't be doing in this tutorial, but you should definitely look into!)
-
-Save those changes, refresh your homepage in the browser, and you should see the landmark error has cleared!
-
-Returning to the empty heading error, this one can be solved in the Wagtail admin. It's looking for the site's name, but sites in Wagtail are not given names by default. To fix it, go to the site settings at http://127.0.0.1:8000/admin/sites/edit/2/ and put something in the site name field, like "Badger Bonanza" or "My Wagtail Site". After saving that, refresh the homepage in your browser and see that the site name you just entered has appeared in the footer, and the accessibility checker is no longer reporting any issues.
+Help text and help panels are gentler approaches to encouraging better practices than validation. That also means though that they are easier for users to ignore. Check in with your users every once and a while to see if they actually find help messages useful and think carefully about how many you use.
 
 ---
 
-This is the end of the coding part of the tutorial. Congrats! You have the basis for a more accessible Python website. If you want some more ideas on what to do with it, we have some suggestions in Next Steps.
-
-[Continue to Next Steps](https://github.com/vossisboss/pyladiescon2025/tree/next-steps)
+That's all of the code that was included in the PyLadiesCon talk. But we're going to include a Bonus Step 6 here so that you can learn more about the Wagtail accessibility checker and how that can also be a useful tool for promoting accessibility. (https://github.com/vossisboss/pyladiescon2025/tree/step-6).
