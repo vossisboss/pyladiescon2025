@@ -1,152 +1,73 @@
-# Step Eight: Helping Editors Help Themselves
+# Bonus Step Six: Using the Wagtail Accessibility Checker
 
-To close out the coding portion of our tutorial, we'll take a look at how we can provide more timely guidance to editors while they are creating their content.
+[Wagtail's built-in accessibility checker](https://guide.wagtail.org/en-latest/releases/new-in-wagtail-4-2/#built-in-accessibility-checker) (added in Wagtail 4.2 in January 2023) is the hallmark feature of our efforts to improve the accessibility of sites made with Wagtail. It's based on [the Axe engine from Deque Systems](https://www.deque.com/axe/). Axe is a tool that can run a wide range of automated accessibility tests. Aside from having [its own browser extension](https://www.deque.com/get-started-axe-devtools-browser-extension/), they have open-soured their framework for other tools to be able to use it under the hood. One example is [Google's Lighthouse](https://developer.chrome.com/docs/lighthouse/overview), and as noted, it also powers the Wagtail accessibility checker.
 
+The goal of Wagtail's accessibility checker is to make it easy for content editors to identify accessibility issues that they can address themselves. To try it out, open the frontend of your site at http://127.0.0.1:8000 and look for the Wagtail user bar in the lower right corner. You might have spotted this in previous steps, but thanks to some intentional mistakes included in the template code we provided you, you should see a red badge on the Wagtail icon indicating one error on the page:
 
-## `help_text`
+![The Wagtail user bar button indicating one error](tutorial-screenshots/userbar-button-with-error.png)
 
-You probably noticed the `help_text` attribute that we included in our custom image block in the previous step. If you have experience in Django, this is probably a familiar concept for you, but help text is a way for developers to provide hints about a field to a user as they are editing it.
+Open up the user bar and click on the **Accessibility** item to show what errors it found. For each error it located, you can click on the button showing the tag name with a crosshair icon to highlight that part of the page.
 
-### Help text for alt text
+![The accessibility checker open and higlighting an error in the footer](tutorial-screenshots/accessibility-checker-error-display.png)
 
-Here again is the meat of our `ImageBlock` class:
+In this case, it's telling us that there is an empty heading, and it's pointing at the `<h2>` in the footer of the page, but that's actually not the _only_ error we introduced! Some of them aren't being displayed because, as mentioned previously, the accessibility checker is meant for editors to find things that they can correct in their content, so its default configuration leaves out many of the errors that Axe can display but that only a developer can address.
 
-```python
-class ImageBlock(StructBlock):
-    image = ImageChooserBlock()
-    alt_text = CharBlock(
-        required=False,
-        help_text="Use to override the image's default alt text.",
-    )
-    decorative = BooleanBlock(
-        required=False,
-        help_text="If this image does not contain meaningful content or is described in nearby text, check this box to not output its alt text.",
-    )
-    # ...
-```
+As developers, we recommend that you enable the display of all possible errors when you are logged in as an admin-level user, so that you can be made aware of those errors that you should fix in your code. To do that, we'll use one of Wagtail's [hooks](https://docs.wagtail.org/en/stable/reference/hooks.html) to customize the behavior of the accessibility checker depending on user level.
 
-Let's improve the help text on the `alt_text` field by adding additional context and a link to further guidance. We can include HTML in our help text by using Django's `mark_safe` utility. Add this import to the top of `blocks.py`:
+Copy this code and paste it into a new `wagtail_hooks.py` file in your `home` app folder:
 
 ```python
-from django.utils.safestring import mark_safe
-```
-
-Then update the help text to something like this:
-
-```python
-    alt_text = CharBlock(
-        required=False,
-        help_text=mark_safe(
-            "Enter a text alternative to be displayed if images fail to load, "
-            "or to be read by screen reader software. "
-            "(Overrides the image's default alt text.) "
-            '<a href="https://www.a11yproject.com/posts/alt-text/" '
-            'target="_blank">Learn more about writing good alt text</a>'
-        ),
-    )
-```
-
-This explains what the field actually does for users who might be unfamiliar with the term "alt text", and offers them a way to learn more about best practices for alt text.
-
-### Help text for heading levels
-
-Looking back at the `HeadingBlock`, let's add some help text to inform users about heading hierarchy considerations when choosing their heading level. Here is the original block again:
-
-```python
-class HeadingBlock(StructBlock):
-    size = ChoiceBlock(
-        choices=[
-            ("h2", "H2"),
-            ("h3", "H3"),
-            ("h4", "H4"),
-        ],
-    )
-    text = CharBlock()
-
-    class Meta:
-        icon = "title"
-        template = "blocks/heading_block.html"
-```
-
-And here is an example of the kind of help text I would add to the `size` field:
-
-```python
-        help_text=mark_safe(
-            'Please ensure that you do not skip heading levels. '
-            'For example, the next heading after an H2 '
-            'should only be either an H3 or another H2. '
-            '<a href="https://www.a11yproject.com/posts/'
-            'how-to-accessible-heading-structure/" target="_blank">'
-            'Learn more about heading structure</a>'
-        ),
-```
+from wagtail import hooks
+from wagtail.admin.userbar import AccessibilityItem
 
 
-## `HelpPanel`
-
-Sometimes you might find yourself in a situation where it'd be a better user experience to give guidance at a page level rather than on individual fields.
-
-For example, let's say you have an Image Gallery page type. In this situation, you probably wouldn't want to use our existing `ImageBlock` because each image in that context would never be decorative, so alt text should be required. And, if you're adding large, arbitrary number of images to the page, seeing identical help text on each of those fields would be noisy and redundant.
-
-Wagtail has a `HelpPanel` that is perfect for this kind of situation. Rather than a typical editor panel that provides some sort of form widget for entering content, `HelpPanel` is a way to provide read-only help content to users.
-
-Here's how we might define an image gallery page model and include a `HelpPanel` to provide alt text guidance in a single prominent location:
-
-```python
-from django.db import models
-
-from wagtail.models import Page, Orderable
-from wagtail.fields import RichTextField
-from wagtail.admin.panels import FieldPanel, HelpPanel, InlinePanel
-from wagtail.search import index
-
-from modelcluster.fields import ParentalKey
+class CustomAccessibilityItem(AccessibilityItem):
+    def get_axe_run_only(self, request):
+        # Do not limit what rule sets run if the user is a superuser
+        if request.user.is_superuser:
+            return None
+        # Otherwise, use the default rule sets
+        return AccessibilityItem.axe_run_only
 
 
-class ImageGalleryPage(Page):
-    intro = RichTextField(blank=True)
-
-    content_panels = Page.content_panels + [
-        FieldPanel("intro"),
-        HelpPanel(
-            content=(
-                "<hr>"
-                "<p>The <b>alt text</b> field is for entering a text alternative "
-                "to be displayed if images fail to load, "
-                "or to be read by screen reader software. "
-                "If one is not entered below, the image's default alt text will be used.</p>"
-                '<a href="https://www.a11yproject.com/posts/alt-text/" '
-                'target="_blank">Learn more about writing good alt text</a>'
-            )
-        ),
-        InlinePanel("gallery_images", label="Images"),
-    ]
-
-
-class ImageGalleryImageImage(Orderable):
-    page = ParentalKey(
-        ImageGalleryPage, on_delete=models.CASCADE, related_name="gallery_images"
-    )
-    image = models.ForeignKey(
-        "custom_media.CustomImage", on_delete=models.CASCADE, related_name="+"
-    )
-    alt_text = models.CharField(blank=True, max_length=250)
-
-    panels = [
-        FieldPanel("image"),
-        FieldPanel("alt_text"),
+@hooks.register("construct_wagtail_userbar")
+def replace_userbar_accessibility_item(request, items):
+    items[:] = [
+        CustomAccessibilityItem() if isinstance(item, AccessibilityItem) else item
+        for item in items
     ]
 ```
 
-If you want to try it out, copy and paste the above code into your `blog/models.py` file and create a new `ImageGalleryPage` under your home page.
+Wagtail will automatically load any `wagtail_hooks.py` files that it finds within app folders, and when it loads this one, it will use the `construct_wagtail_userbar` hook to replace the stock `AccessibilityItem` with the `CustomAccessibilityItem` that we subclassed from it above.
 
-This results in a neat and tidy interface for building an image gallery:
+After saving the file, stop and restart your development server (Ctrl+C, then `python manage.py runserver`) in order to get Wagtail to pick up on the new hooks file. Then refresh your homepage and you will see a new error: "All page content should be contained by landmark". ([Landmarks](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Roles/landmark_role) are used by assistive technology to help users navigate between the major areas of a page.) This is an example of the kind of error that can't be addressed by an editor and must be addressed by a developer through changing the template code.
 
-![The Wagtail editing interface for an image gallery page as defined in the code above, featuring a HelpPanel describing the alt text field.](tutorial-screenshots/example-helppanel.png)
+We have two instances of this error to take care of: the header and the main content area. For the header, we could solve this by applying a `role="banner"` attribute to the wrapping `div`, but a better practice is to use newer HTML elements with semantic meanings and implicit landmark roles. Instead of adding `role` attribute, the Let's change the element that's wrapping our site header from a `div` to `header`.
 
-We didn't include a template for this page, but you're welcome to try adding one. Here are a couple hints:
+In `myblog/templates/base.html`, update the header area to look like this:
 
-1. Put it at `myblog/templates/blog/image_gallery_page.html`, which follows the conventional Wagtail template location pattern so you don't have to specify the template location in the model.
-2. We left off the decorative checkbox because images in a gallery context should always have alt text. Refer back to our original implementation of `image_block.html` to see how you could use a simple `if`/`else` statement to determine which alt text to output.
+```django
+        <header class="header">
+            My Wagtail Blog
+        </header>
+```
 
-(As a brief aside, the `ImageGalleryPage` model also showcases a common Wagtail pattern you might want to be aware of – the use of an `InlinePanel` to insert any number of standard Django model fields – or combinations of fields, like this example with both an image and its alt text – without using a StreamField. You can [read more on inline models in the docs](https://docs.wagtail.org/en/stable/topics/pages.html#inline-models).)
+The main content area (`{% block content %}{% endblock %}`) is currently also wrapped in a `div`, so let's contain all of the rest of the page content by swapping that to a `main` element (again in `myblog/templates/base.html`):
+
+```django
+        <main id="main">
+            {% block content %}{% endblock %}
+        </main>
+```
+
+(The `id="main"` also provides a convenient hook for adding a [skip link](https://webaim.org/techniques/skipnav/), which we won't be doing in this tutorial, but you should definitely look into!)
+
+Save those changes, refresh your homepage in the browser, and you should see the landmark error has cleared!
+
+Returning to the empty heading error, this one can be solved in the Wagtail admin. It's looking for the site's name, but sites in Wagtail are not given names by default. To fix it, go to the site settings at http://127.0.0.1:8000/admin/sites/edit/2/ and put something in the site name field, like "Badger Bonanza" or "My Wagtail Site". After saving that, refresh the homepage in your browser and see that the site name you just entered has appeared in the footer, and the accessibility checker is no longer reporting any issues.
+
+---
+
+Now that we have tried out the Wagtail accessibility checker and fixed some issues that it's reported, let's dig deeper on some of the most common accessibility issues that we see out there.
+
+[Continue to Next Steps](https://github.com/vossisboss/pyladiescon2025/tree/next-steps)
