@@ -83,4 +83,6 @@ Help text and help panels are gentler approaches to encouraging better practices
 
 ---
 
-That's all of the code that was included in the PyLadiesCon talk. But we're going to include a Bonus Step 6 here so that you can learn more about the Wagtail accessibility checker and how that can also be a useful tool for promoting accessibility. (https://github.com/vossisboss/pyladiescon2025/tree/step-6).
+That's all of the code that was included in the PyLadiesCon talk. But we're going to include a Bonus Step 6 here so that you can learn more about the Wagtail accessibility checker and how that can also be a useful tool for promoting accessibility. 
+
+[Continue to Bonus Step 6](https://github.com/vossisboss/pyladiescon2025/tree/step-6)
