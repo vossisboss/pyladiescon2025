@@ -68,6 +68,6 @@ Returning to the empty heading error, this one can be solved in the Wagtail admi
 
 ---
 
-Now that we have tried out the Wagtail accessibility checker and fixed some issues that it's reported, let's dig deeper on some of the most common accessibility issues that we see out there.
+This is the end of the coding part of the tutorial. Congrats! You have the basis for a more accessible Python website. If you want some more ideas on what to do with it, we have some suggestions in Next Steps.
 
 [Continue to Next Steps](https://github.com/vossisboss/pyladiescon2025/tree/next-steps)
