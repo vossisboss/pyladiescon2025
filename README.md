@@ -47,7 +47,7 @@ We have two instances of this error to take care of: the header and the main con
 In `myblog/templates/base.html`, update the header area to look like this:
 
 ```django
-        <header class="header">
+        <header class="">
             My Wagtail Blog
         </header>
 ```
